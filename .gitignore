@@ -1,0 +1,13 @@
+*.o
+mpi/asm-syntax.h
+mpi/mod-source-info.h
+mpi/mpi-asm-defs.h
+mpi/mpih-add1-asm.S
+mpi/mpih-lshift-asm.S
+mpi/mpih-mul1-asm.S
+mpi/mpih-mul2-asm.S
+mpi/mpih-mul3-asm.S
+mpi/mpih-rshift-asm.S
+mpi/mpih-sub1-asm.S
+mpi/sysdep.h
+libgcrypt.a

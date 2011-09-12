@@ -1,0 +1,277 @@
+TARGET=libgcrypt.a
+
+ifdef LIBGPGERR_DIR
+  LIBGPGERRDIR=$(LIBGPGERR_DIR)
+else
+  LIBGPGERRDIR=../libgpg-error
+endif
+
+ifdef AWK_PATH
+  AWK := $(AWK_PATH)
+else
+  AWK := $(shell which awk)
+endif
+
+UNAME := $(shell uname)
+
+HOST := $(shell . ./config.guess)
+HOST := $(subst x86_64,i386,$(HOST))
+HOST := $(subst ppc64,ppc,$(HOST))
+
+CFLAGS=-m32 -I. -Isrc -Icipher -Irandom -Impi -Impi/generic -I$(LIBGPGERRDIR)/src -Wall -O2 -DHAVE_CONFIG_H -D_GCRYPT_IN_LIBGCRYPT
+
+ASMFLAGS=-m32 -O2
+
+SYMBOL_UNDERSCORE=no
+
+ifeq ($(UNAME), Darwin)
+  ifeq ($(AWK),)
+    AWK := ../tools/osx/awk
+  endif
+  LN_S=ln -f -s
+  check_arch = $(shell if as -arch $(1) -o /dev/null < /dev/null > /dev/null; then echo yes; else echo no; fi)
+  ifeq ($(call check_arch,i386), yes)
+    CFLAGS+=-arch i386
+  endif
+  ifeq ($(call check_arch,ppc), yes)
+    CFLAGS+=-arch ppc
+  endif
+  CFLAGS+=-fPIC -DPIC -fvisibility=hidden \
+	-DHAVE_USHORT_TYPEDEF=1 \
+	-DHAVE_MMAP=1 \
+	-DHAVE_MLOCK=1 \
+	-DHAVE_GETPAGESIZE=1 \
+	-DUSE_RNDLINUX=1 \
+	-DHAVE_STPCPY=1 \
+	-DHAVE_SYS_SELECT_H=1 \
+	-DHAVE_GETRUSAGE=1
+  ASMFLAGS+=-fPIC -DPIC
+  OS_RANDOM=random/rndlinux.o
+  SYMBOL_UNDERSCORE=yes
+endif
+
+ifeq ($(UNAME), Linux)
+  ifeq ($(AWK),)
+     $(error Please install awk for your distribution)
+  endif
+  LN_S=ln -f -s
+  CFLAGS+=-fPIC -DPIC -fvisibility=hidden \
+	-DHAVE_ULONG_TYPEDEF=1 \
+	-DHAVE_USHORT_TYPEDEF=1 \
+	-DGCRY_USE_VISIBILITY=1 \
+	-DHAVE_MMAP=1 \
+	-DHAVE_MLOCK=1 \
+	-DHAVE_GETPAGESIZE=1 \
+	-DUSE_RNDLINUX=1 \
+	-DHAVE_STPCPY=1 \
+	-DHAVE_SYS_SELECT_H=1 \
+	-DHAVE_GETRUSAGE=1
+  ASMFLAGS+=-fPIC -DPIC
+  OS_RANDOM=random/rndlinux.o
+endif
+
+WIN32=
+ifeq ($(findstring CYG,$(UNAME)), CYG)
+  WIN32=1
+  CC=gcc-3
+endif
+ifeq ($(findstring MINGW,$(UNAME)), MINGW)
+  WIN32=1
+  CC=gcc
+endif
+ifdef WIN32
+  ifeq ($(AWK),)
+    AWK := ../tools/win32/gawk.exe
+  endif
+  LN_S=ln -s -f
+  CFLAGS+=-DWIN32 -DHAVE_W32_SYSTEM=1 -DHAVE_WINSOCK2_H=1 -DHAVE_DOSISH_SYSTEM=1 -DUSE_RNDW32=1
+  OS_RANDOM=random/rndw32.o
+  SYMBOL_UNDERSCORE=yes
+endif
+
+MPIH_SRC=$(shell AWK=${AWK} srcdir=`pwd` host=${HOST} ac_cv_sys_symbol_underscore=${SYMBOL_UNDERSCORE} try_asm_modules=yes . ./call_config.links)
+$(shell for lnk in $(MPIH_SRC); do \
+	  $(LN_S) `echo $$lnk |${AWK} '{ split($$0, a, ":"); print substr(a[2], 5); print a[1] }'`; \
+	done)
+
+ifneq ($(wildcard mpi/mpih-add1-asm.S),)
+  OBJ_ADD1=mpi/mpih-add1-asm.o
+else
+  ifneq ($(wildcard mpi/mpih-add1.c),)
+    OBJ_ADD1=mpi/mpih-add1.o
+  endif
+endif
+ifneq ($(wildcard mpi/mpih-lshift-asm.S),)
+  OBJ_LSHIFT=mpi/mpih-lshift-asm.o
+else
+  ifneq ($(wildcard mpi/mpih-lshift.c),)
+    OBJ_LSHIFT=mpi/mpih-lshift.o
+  endif
+endif
+ifneq ($(wildcard mpi/mpih-sub1-asm.S),)
+  OBJ_SUB1=mpi/mpih-sub1-asm.o
+else
+  ifneq ($(wildcard mpi/mpih-sub1.c),)
+    OBJ_SUB1=mpi/mpih-sub1.o
+  endif
+endif
+ifneq ($(wildcard mpi/mpih-mul3-asm.S),)
+  OBJ_MUL3=mpi/mpih-mul3-asm.o
+else
+  ifneq ($(wildcard mpi/mpih-mul3.c),)
+    OBJ_MUL3=mpi/mpih-mul3.o
+  endif
+endif
+ifneq ($(wildcard mpi/mpih-rshift-asm.S),)
+  OBJ_RSHIFT=mpi/mpih-rshift-asm.o
+else
+  ifneq ($(wildcard mpi/mpih-rshift.c),)
+    OBJ_RSHIFT=mpi/mpih-rshift.o
+  endif
+endif
+ifneq ($(wildcard mpi/mpih-mul2-asm.S),)
+  OBJ_MUL2=mpi/mpih-mul2-asm.o
+else
+  ifneq ($(wildcard mpi/mpih-mul2.c),)
+    OBJ_MUL2=mpi/mpih-mul2.o
+  endif
+endif
+ifneq ($(wildcard mpi/mpih-mul1-asm.S),)
+  OBJ_MUL1=mpi/mpih-mul1-asm.o
+else
+  ifneq ($(wildcard mpi/mpih-mul1.c),)
+    OBJ_MUL1=mpi/mpih-mul1.o
+  endif
+endif
+
+objects= \
+	src/visibility.o \
+	src/misc.o \
+	src/global.o \
+	src/sexp.o \
+	src/hwfeatures.o \
+	src/stdmem.o \
+	src/secmem.o \
+	src/missing-string.o \
+	src/module.o \
+	src/fips.o \
+	src/hmac256.o \
+	src/ath.o \
+	cipher/camellia.o \
+	cipher/pubkey.o \
+	cipher/sha256.o \
+	cipher/md5.o \
+	cipher/des.o \
+	cipher/primegen.o \
+	cipher/rsa.o \
+	cipher/rfc2268.o \
+	cipher/cast5.o \
+	cipher/cipher.o \
+	cipher/md4.o \
+	cipher/hash-common.o \
+	cipher/whirlpool.o \
+	cipher/ecc.o \
+	cipher/twofish.o \
+	cipher/rijndael.o \
+	cipher/dsa.o \
+	cipher/seed.o \
+	cipher/sha512.o \
+	cipher/tiger.o \
+	cipher/arcfour.o \
+	cipher/sha1.o \
+	cipher/ac.o \
+	cipher/crc.o \
+	cipher/elgamal.o \
+	cipher/rmd160.o \
+	cipher/hmac-tests.o \
+	cipher/blowfish.o \
+	cipher/serpent.o \
+	cipher/md.o \
+	cipher/camellia-glue.o \
+	random/random-csprng.o \
+	random/random.o \
+	random/random-fips.o \
+	$(OS_RANDOM) \
+	random/rndhw.o \
+	$(OBJ_ADD1) \
+	mpi/mpi-inv.o \
+	mpi/mpi-mod.o \
+	mpi/mpi-bit.o \
+	mpi/mpi-pow.o \
+	mpi/mpi-div.o \
+	$(OBJ_LSHIFT) \
+	mpi/mpi-mpow.o \
+	$(OBJ_SUB1) \
+	mpi/mpi-cmp.o \
+	$(OBJ_MUL3) \
+	mpi/mpi-scan.o \
+	mpi/mpiutil.o \
+	mpi/mpi-add.o \
+	mpi/mpicoder.o \
+	$(OBJ_RSHIFT) \
+	mpi/mpi-gcd.o \
+	$(OBJ_MUL2) \
+	mpi/ec.o \
+	mpi/mpih-mul.o \
+	mpi/mpi-mul.o \
+	mpi/mpih-div.o \
+	mpi/mpi-inline.o \
+	$(OBJ_MUL1) \
+
+all: $(TARGET)
+
+
+%.o: %.c
+	$(CC) -o $@ $(CFLAGS) -c $<
+
+
+mpi/mpih-add1-asm.o: mpi/mpih-add1-asm.S
+	$(CC) -o $@ $(ASMFLAGS) -c $<
+
+mpi/mpih-lshift-asm.o: mpi/mpih-lshift-asm.S
+	$(CC) -o $@ $(ASMFLAGS) -c $<
+
+mpi/mpih-sub1-asm.o: mpi/mpih-sub1-asm.S
+	$(CC) -o $@ $(ASMFLAGS) -c $<
+
+mpi/mpih-mul3-asm.o: mpi/mpih-mul3-asm.S
+	$(CC) -o $@ $(ASMFLAGS) -c $<
+
+mpi/mpih-rshift-asm.o: mpi/mpih-rshift-asm.S
+	$(CC) -o $@ $(ASMFLAGS) -c $<
+
+mpi/mpih-mul2-asm.o: mpi/mpih-mul2-asm.S
+	$(CC) -o $@ $(ASMFLAGS) -c $<
+
+mpi/mpih-mul1-asm.o: mpi/mpih-mul1-asm.S
+	$(CC) -o $@ $(ASMFLAGS) -c $<
+
+
+mpi/mpih-add1.o: mpi/mpih-add1.c
+	$(CC) -o $@ $(CFLAGS) -c $<
+
+mpi/mpih-lshift.o: mpi/mpih-lshift.c
+	$(CC) -o $@ $(CFLAGS) -c $<
+
+mpi/mpih-sub1.o: mpi/mpih-sub1.c
+	$(CC) -o $@ $(CFLAGS) -c $<
+
+mpi/mpih-mul3.o: mpi/mpih-mul3.c
+	$(CC) -o $@ $(CFLAGS) -c $<
+
+mpi/mpih-rshift.o: mpi/mpih-rshift.c
+	$(CC) -o $@ $(CFLAGS) -c $<
+
+mpi/mpih-mul2.o: mpi/mpih-mul2.c
+	$(CC) -o $@ $(CFLAGS) -c $<
+
+mpi/mpih-mul1.o: mpi/mpih-mul1.c
+	$(CC) -o $@ $(CFLAGS) -c $<
+
+
+$(TARGET): $(objects)
+	$(AR) rcs $@ $(objects)
+
+
+clean:
+	rm -f src/*.o cipher/*.o random/*.o mpi/*.o mpi/*.S mpi/mpi-asm-defs.h $(TARGET)

@@ -1,0 +1,3 @@
+#!/bin/sh
+. mpi/config.links
+echo $mpi_ln_list
